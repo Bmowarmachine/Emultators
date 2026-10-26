@@ -1,82 +1,200 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d12">
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>NFC Games</title>
-  <link rel="preconnect" href="https://cdn.emulatorjs.org">
-  <link rel="dns-prefetch" href="https://cdn.emulatorjs.org">
-  <link rel="preload" href="https://cdn.emulatorjs.org/stable/data/loader.js" as="script" crossorigin>
-  <link rel="preload" href="https://cdn.emulatorjs.org/stable/data/emulator.min.js" as="script">
-  <link rel="preload" href="https://cdn.emulatorjs.org/stable/data/emulator.min.css" as="style">
-  <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=catalog-v1">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Cargando juego…</title>
+<link rel="preconnect" href="https://cdn.emulatorjs.org" crossorigin>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; }
+  #boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; gap: 14px; background: #000; z-index: 20; text-align: center; padding: 24px; }
+  #boot.hide { display: none; }
+  #boot h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  #boot p { margin: 0; opacity: .7; font-size: 14px; }
+  .bar { width: min(260px, 70vw); height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 40%; background: #8bd450; border-radius: 3px;
+    animation: slide 1.1s ease-in-out infinite; }
+  @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
+  #hud { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 8px); left: 8px; z-index: 10;
+    display: flex; gap: 6px; align-items: center; font-size: 12px; }
+  #hud span, #hud button { background: rgba(0,0,0,.65); color: #fff; border: 1px solid rgba(255,255,255,.25);
+    border-radius: 14px; padding: 5px 10px; font: inherit; }
+  #hud button { cursor: pointer; }
+  #conflict { position: fixed; left: 12px; right: 12px; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    z-index: 30; background: #1d1d1d; border: 1px solid #555; border-radius: 12px; padding: 14px;
+    font-size: 14px; display: none; }
+  #conflict button { margin: 10px 8px 0 0; padding: 8px 12px; border-radius: 8px; border: 0; font: inherit; cursor: pointer; }
+  #conflict .a { background: #8bd450; color: #000; } #conflict .b { background: #444; color: #fff; }
+</style>
 </head>
 <body>
-  <main id="app">
-    <section id="catalogView" class="view" hidden>
-      <div class="hero">
-        <p class="eyebrow">NFC GAME LIBRARY</p>
-        <h1>Acerca un llavero. Abre un juego.</h1>
-        <p class="subtitle">
-          Cada NFC apunta a este sitio con un identificador distinto.
-        </p>
-      </div>
+<div id="game"></div>
 
-      <div id="catalog" class="catalog" aria-live="polite"></div>
-    </section>
+<div id="boot">
+  <h1 id="bootTitle">Cargando…</h1>
+  <div class="bar"><i></i></div>
+  <p id="bootMsg">Buscando tu partida</p>
+</div>
 
-    <section id="loadingView" class="view centered" hidden>
-      <div class="loader" aria-hidden="true"></div>
-      <p class="eyebrow">CARGANDO</p>
-      <h1 id="loadingTitle">Preparando juego…</h1>
-      <p id="loadingSubtitle" class="subtitle">Un momento.</p>
-    </section>
+<div id="hud" hidden>
+  <span id="status">—</span>
+  <button id="saveBtn" type="button">Guardar ahora</button>
+</div>
 
-    <section id="setupView" class="view centered" hidden>
-      <div id="setupIcon" class="game-icon">🎮</div>
-      <p class="eyebrow">JUEGO CONFIGURADO</p>
-      <h1 id="setupTitle">Juego</h1>
-      <p id="setupText" class="subtitle"></p>
+<div id="conflict">
+  Alguien guardó una partida más reciente con este mismo llavero.
+  <div>
+    <button class="a" id="keepMine" type="button">Sobrescribir con la mía</button>
+    <button class="b" id="loadTheirs" type="button">Cargar la última</button>
+  </div>
+</div>
 
-      <div class="info-card">
-        <div>
-          <span class="label">ID NFC</span>
-          <strong id="setupId"></strong>
-        </div>
-        <div>
-          <span class="label">Sistema</span>
-          <strong id="setupSystem"></strong>
-        </div>
-      </div>
+<script src="config.js"></script>
+<script>
+(() => {
+  const CFG = window.NFC_CONFIG;
+  const API = CFG.API_URL.replace(/\/$/, '');
+  const tag = new URLSearchParams(location.search).get('tag') || '';
+  const $ = (id) => document.getElementById(id);
 
-      <p class="fine">
-        Para que se abra automáticamente en cualquier teléfono,
-        este juego necesita una fuente de ROM autorizada y accesible por HTTPS.
-      </p>
+  let version = null;     // versión de la partida que este teléfono cargó/guardó por última vez
+  let dirty = false;      // true si el jugador tocó algo desde el último guardado
+  let saving = false;
+  let started = false;
 
-      <a class="secondary-button" href="./">Volver al catálogo</a>
-    </section>
+  const setStatus = (t) => { $('status').textContent = t; };
+  const fatal = (msg) => {
+    $('bootTitle').textContent = 'Ups';
+    $('bootMsg').textContent = msg;
+    document.querySelector('.bar').style.display = 'none';
+  };
 
-    <section id="errorView" class="view centered" hidden>
-      <div class="game-icon">⚠️</div>
-      <p class="eyebrow">ERROR</p>
-      <h1>No se pudo abrir el juego</h1>
-      <p id="errorText" class="subtitle"></p>
-      <a class="secondary-button" href="./">Volver al catálogo</a>
-    </section>
+  // ---- compresión (los estados de emulador comprimen muy bien) ----
+  async function gzip(bytes) {
+    if (!('CompressionStream' in window)) return bytes;
+    const s = new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'));
+    return new Uint8Array(await new Response(s).arrayBuffer());
+  }
+  async function gunzipIfNeeded(bytes) {
+    if (bytes[0] === 0x1f && bytes[1] === 0x8b && 'DecompressionStream' in window) {
+      const s = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+      return new Uint8Array(await new Response(s).arrayBuffer());
+    }
+    return bytes;
+  }
 
-    <section id="gameView" hidden>
-      <div id="game"></div>
-      <div id="saveStatus" class="save-status" hidden aria-live="polite">Partida guardada</div>
-      <button id="exitGame" class="exit-button" type="button" aria-label="Salir del juego" hidden>×</button>
-    </section>
-  </main>
+  // ---- arranque: tag + partida en paralelo, luego emulador ----
+  async function main() {
+    if (!/^[a-f0-9]{24}$/.test(tag)) return fatal('Este enlace no es válido. Vuelve a acercar tu llavero.');
 
-  <script src="./games.js?v=catalog-v1"></script>
-  <script src="./app.js?v=catalog-v1"></script>
+    const [infoRes, saveRes] = await Promise.all([
+      fetch(`${API}/tag/${tag}`).catch(() => null),
+      fetch(`${API}/save/${tag}`, { cache: 'no-store' }).catch(() => null),
+    ]);
+    if (!infoRes || !infoRes.ok) return fatal('No pude reconocer este llavero. Revisa tu conexión.');
+    const info = await infoRes.json();
+    document.title = info.game;
+    $('bootTitle').textContent = info.game;
+
+    let stateUrl = null;
+    if (saveRes && saveRes.ok) {
+      version = saveRes.headers.get('X-Version');
+      const raw = new Uint8Array(await saveRes.arrayBuffer());
+      const state = await gunzipIfNeeded(raw);
+      stateUrl = URL.createObjectURL(new Blob([state]));
+      $('bootMsg').textContent = 'Continuando tu partida…';
+    } else {
+      $('bootMsg').textContent = 'Partida nueva';
+    }
+    startEmulator(info, stateUrl);
+  }
+
+  function startEmulator(info, stateUrl) {
+    window.EJS_player = '#game';
+    window.EJS_core = info.core || 'gb';
+    window.EJS_gameUrl = info.rom;
+    window.EJS_gameName = info.game;
+    window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+    window.EJS_startOnLoaded = true;
+    window.EJS_backgroundColor = '#000000';
+    if (stateUrl) window.EJS_loadStateURL = stateUrl;
+
+    window.EJS_onGameStart = () => {
+      started = true;
+      $('boot').classList.add('hide');
+      $('hud').hidden = false;
+      setStatus(version ? '☁ Partida cargada' : '☁ Partida nueva');
+    };
+    // Si el jugador usa el botón de guardar del propio emulador, también lo subimos.
+    window.EJS_onSaveState = (e) => { if (e && e.state) upload(new Uint8Array(e.state), false); };
+
+    const s = document.createElement('script');
+    s.src = window.EJS_pathtodata + 'loader.js';
+    s.onerror = () => fatal('No pude cargar el emulador. Revisa tu conexión.');
+    document.body.appendChild(s);
+  }
+
+  // ---- guardado ----
+  function readState() {
+    const gm = window.EJS_emulator && window.EJS_emulator.gameManager;
+    if (!gm || typeof gm.getState !== 'function') return null;
+    const s = gm.getState();
+    return s ? new Uint8Array(s) : null;
+  }
+
+  async function saveNow(force = false) {
+    if (!started) return;
+    const state = readState();
+    if (!state) { setStatus('⚠ No pude leer la partida'); return; }
+    await upload(state, force);
+  }
+
+  async function upload(state, force) {
+    if (saving) return;
+    saving = true;
+    setStatus('☁ Guardando…');
+    try {
+      const body = await gzip(state);
+      const headers = { 'Content-Type': 'application/octet-stream' };
+      if (version) headers['X-Base-Version'] = version;
+      if (force) headers['X-Force'] = '1';
+      const r = await fetch(`${API}/save/${tag}`, { method: 'PUT', headers, body });
+      if (r.status === 409) {
+        $('conflict').style.display = 'block';
+        setStatus('⚠ Conflicto de partida');
+      } else if (r.ok) {
+        version = r.headers.get('X-Version');
+        dirty = false;
+        $('conflict').style.display = 'none';
+        setStatus('☁ Guardado ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
+      } else {
+        setStatus('⚠ No se pudo guardar');
+      }
+    } catch (e) {
+      setStatus('⚠ Sin conexión');
+    } finally {
+      saving = false;
+    }
+  }
+
+  // "dirty" = el jugador interactuó. Así no llenamos GitHub de commits si nadie juega.
+  ['pointerdown', 'keydown', 'touchstart'].forEach((ev) =>
+    document.addEventListener(ev, () => { dirty = true; }, { capture: true, passive: true }));
+
+  $('saveBtn').addEventListener('click', () => saveNow(false));
+  $('keepMine').addEventListener('click', () => saveNow(true));
+  $('loadTheirs').addEventListener('click', () => location.reload());
+
+  setInterval(() => { if (dirty && !document.hidden) saveNow(false); }, CFG.AUTOSAVE_MS || 180000);
+  document.addEventListener('visibilitychange', () => { if (document.hidden && dirty) saveNow(false); });
+  window.addEventListener('pagehide', () => { if (dirty) saveNow(false); });
+
+  main();
+})();
+</script>
 </body>
 </html>
