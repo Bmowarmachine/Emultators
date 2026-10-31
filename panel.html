@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Panel NFC Games</title>
+<style>
+  :root { --bg:#0d1117; --card:#161b22; --line:#30363d; --txt:#e6edf3; --dim:#8b949e; --ok:#3fb950; --accent:#2f81f7; --bad:#f85149; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 6px 0 18px; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+  label { display:block; font-size:14px; color:var(--dim); margin:14px 0 6px; }
+  input[type=text], input[type=password], input[type=number], select {
+    width:100%; padding:11px 12px; border-radius:8px; border:1px solid var(--line); background:#0d1117; color:var(--txt); font:inherit; }
+  input[type=file] { width:100%; color:var(--dim); }
+  button { font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--line); background:#21262d; color:var(--txt); padding:10px 14px; }
+  button.primary { background:var(--ok); border-color:var(--ok); color:#04130a; font-weight:600; }
+  button.danger { color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  .tabs { display:flex; gap:8px; margin-bottom:16px; }
+  .tabs button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .hint { color:var(--dim); font-size:13px; margin-top:6px; }
+  .msg { padding:10px 12px; border-radius:8px; margin-top:12px; font-size:14px; white-space:pre-wrap; }
+  .msg.bad { background:rgba(248,81,73,.12); border:1px solid var(--bad); }
+  .msg.ok { background:rgba(63,185,80,.12); border:1px solid var(--ok); }
+  #log { font:13px/1.6 ui-monospace,Menlo,Consolas,monospace; color:var(--dim); margin-top:12px; white-space:pre-wrap; }
+  .url { display:flex; gap:8px; align-items:center; margin:8px 0; }
+  .url code { flex:1; word-break:break-all; font-size:12px; background:#0d1117; border:1px solid var(--line); border-radius:8px; padding:8px; }
+  .game { border-top:1px solid var(--line); padding-top:14px; margin-top:14px; }
+  .game:first-child { border-top:0; padding-top:0; margin-top:0; }
+  .game h3 { margin:0 0 2px; font-size:16px; }
+  .meta { color:var(--dim); font-size:13px; }
+  .tagrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:8px; font-size:13px; }
+  .tagrow code { color:var(--dim); }
+  details { margin-top:12px; color:var(--dim); font-size:14px; }
+  details ol { padding-left:20px; }
+  [hidden] { display:none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎮 Panel NFC Games</h1>
+
+  <!-- CONEXIÓN -->
+  <div class="card" id="connectCard">
+    <h2>1. Conectar con GitHub</h2>
+    <label for="token">Tu token de GitHub</label>
+    <input type="password" id="token" placeholder="github_pat_..." autocomplete="off">
+    <div class="row" style="margin-top:12px">
+      <label style="margin:0;display:flex;gap:8px;align-items:center;color:var(--txt)">
+        <input type="checkbox" id="remember"> Recordar en este dispositivo
+      </label>
+    </div>
+    <div class="row" style="margin-top:14px"><button class="primary" id="connectBtn" type="button">Conectar</button></div>
+    <div id="connectMsg"></div>
+    <details>
+      <summary>¿Cómo consigo el token?</summary>
+      <ol>
+        <li>En GitHub: tu foto → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
+        <li>Nombre: <b>nfc-panel</b>.</li>
+        <li>En <b>Repository access</b> elige <b>Only select repositories</b> y marca <b>Emultators</b> y <b>nfc-data</b>.</li>
+        <li>En <b>Permissions → Repository permissions → Contents</b> elige <b>Read and write</b>.</li>
+        <li>Pulsa <b>Generate token</b>, cópialo y pégalo arriba.</li>
+      </ol>
+      Este token es distinto al del Worker y solo se guarda en tu dispositivo.
+    </details>
+  </div>
+
+  <!-- PANEL -->
+  <div id="main" hidden>
+    <div class="tabs">
+      <button type="button" id="tabAdd" class="on">➕ Agregar juego</button>
+      <button type="button" id="tabList">📋 Mis llaveros</button>
+      <button type="button" id="logout" style="margin-left:auto">Salir</button>
+    </div>
+
+    <div id="paneAdd">
+      <div class="card">
+        <h2>Agregar un juego nuevo</h2>
+        <label for="gname">Nombre del juego</label>
+        <input type="text" id="gname" placeholder="Ej. Pokemon Blue" maxlength="60">
+
+        <label for="gfile">Archivo del juego</label>
+        <input type="file" id="gfile" accept=".gb,.gbc,.gba,.nes,.sfc,.smc">
+        <div class="hint" id="coreHint">Se detecta la consola automáticamente.</div>
+
+        <label for="gcount">¿Cuántos llaveros quieres crear?</label>
+        <input type="number" id="gcount" min="1" max="20" value="1">
+        <div class="hint">Cada llavero tiene su propia partida guardada.</div>
+
+        <div class="row" style="margin-top:18px"><button class="primary" id="publishBtn" type="button">Publicar juego y crear llaveros</button></div>
+        <div id="log"></div>
+        <div id="addMsg"></div>
+      </div>
+      <div class="card" id="results" hidden>
+        <h2>✅ Listo. Graba estos enlaces en tus chips</h2>
+        <div class="hint" style="margin:0 0 8px">NFC Tools → Escribir → Añadir un registro → URL/URI → pega el enlace → Escribir.</div>
+        <div id="resultList"></div>
+        <div class="row" style="margin-top:12px"><button type="button" id="copyAll">Copiar todos</button></div>
+      </div>
+    </div>
+
+    <div id="paneList" hidden>
+      <div class="card">
+        <div class="row" style="justify-content:space-between;margin-bottom:6px">
+          <h2 style="margin:0">Mis llaveros</h2>
+          <button type="button" id="reload">Actualizar</button>
+        </div>
+        <div id="listMsg"></div>
+        <div id="games"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  // ===== AJUSTES (solo cambia esto si renombras tus repos) =====
+  const OWNER = 'Bmowarmachine';
+  const SITE_REPO = 'Emultators';   // repo público con la página y las ROMs
+  const DATA_REPO = 'nfc-data';     // repo privado con tags/ y saves/
+  const BRANCH = 'main';
+  // =============================================================
+
+  const $ = (id) => document.getElementById(id);
+  const CORES = { gb:'gb', gbc:'gb', gba:'gba', nes:'nes', sfc:'snes', smc:'snes' };
+  const CORE_NAMES = { gb:'Game Boy / Game Boy Color', gba:'Game Boy Advance', nes:'NES', snes:'Super Nintendo' };
+  let token = '';
+  let publishedUrls = [];
+
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  const siteUrl = () => location.origin + location.pathname.replace(/[^/]*$/, '');
+
+  // ---------- utilidades ----------
+  function slugify(s) {
+    const out = s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return out || 'juego';
+  }
+  function randomHex(bytes) {
+    const a = new Uint8Array(bytes); crypto.getRandomValues(a);
+    return Array.from(a, (b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  function bytesToB64(bytes) {
+    let s = '';
+    for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s);
+  }
+  const utf8ToB64 = (str) => bytesToB64(new TextEncoder().encode(str));
+  const b64ToUtf8 = (b64) => {
+    const bin = atob(b64.replace(/\s/g, ''));
+    return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+  };
+  async function fileToB64(file) { return bytesToB64(new Uint8Array(await file.arrayBuffer())); }
+  function extOf(name) { const m = name.match(/\.([a-z0-9]+)$/i); return m ? m[1].toLowerCase() : ''; }
+  function detectCore(name) { return CORES[extOf(name)] || null; }
+
+  // ---------- API de GitHub ----------
+  function api(path, init = {}) {
+    // Sin opciones especiales de caché ni cabeceras extra: así el navegador no pide permiso previo (CORS).
+    // Para evitar datos viejos en las lecturas se agrega un parámetro cambiante a la dirección.
+    const isGet = !init.method || init.method === 'GET';
+    const url = 'https://api.github.com' + path + (isGet ? (path.includes('?') ? '&' : '?') + '_=' + Date.now() : '');
+    return fetch(url, {
+      ...init,
+      headers: {
+        Authorization: 'Bearer ' + token,
+        Accept: 'application/vnd.github+json',
+        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        ...(init.headers || {}),
+      },
+    }).catch((e) => {
+      throw new Error('No pude conectar con GitHub (' + (e && e.message ? e.message : 'sin detalle') + ').\n' +
+        'Prueba: 1) abrir esta página en una ventana de incógnito, 2) pausar AdBlock u otras extensiones en este sitio, ' +
+        '3) revisar que el token no tenga espacios ni saltos de línea.');
+    });
+  }
+  async function explain(r) {
+    if (r.status === 401) return 'El token no es válido o ya venció. Crea uno nuevo.';
+    if (r.status === 403) return 'GitHub rechazó la acción (permisos del token o demasiadas peticiones seguidas).';
+    if (r.status === 404) return 'No encontré el repositorio. Revisa que el token incluya Emultators y nfc-data.';
+    let t = ''; try { t = (await r.json()).message || ''; } catch (e) {}
+    return 'GitHub respondió ' + r.status + (t ? ': ' + t : '');
+  }
+  const contentsPath = (repo, path) => `/repos/${OWNER}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`;
+
+  async function getFile(repo, path) {
+    const r = await api(contentsPath(repo, path) + '?ref=' + BRANCH);
+    if (r.status === 404) return null;
+    if (!r.ok) throw new Error(await explain(r));
+    return r.json();
+  }
+  async function listDir(repo, path) {
+    const r = await api(contentsPath(repo, path) + '?ref=' + BRANCH);
+    if (r.status === 404) return [];
+    if (!r.ok) throw new Error(await explain(r));
+    const d = await r.json();
+    return Array.isArray(d) ? d : [];
+  }
+  async function putFile(repo, path, b64, message) {
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const cur = await getFile(repo, path);
+      const body = { message, content: b64, branch: BRANCH };
+      if (cur) body.sha = cur.sha;
+      const r = await api(contentsPath(repo, path), { method: 'PUT', body: JSON.stringify(body) });
+      if (r.ok) return r.json();
+      if (r.status === 409 || r.status === 422) { await sleep(900 * (attempt + 1)); continue; }
+      throw new Error(await explain(r));
+    }
+    throw new Error('GitHub estaba ocupado. Espera unos segundos y vuelve a intentar.');
+  }
+  async function deleteFile(repo, path, sha, message) {
+    const r = await api(contentsPath(repo, path), { method: 'DELETE', body: JSON.stringify({ message, sha, branch: BRANCH }) });
+    if (!r.ok) throw new Error(await explain(r));
+  }
+
+  // ---------- conexión ----------
+  async function connect(t) {
+    token = t.trim();
+    if (!token) throw new Error('Pega tu token primero.');
+    for (const repo of [SITE_REPO, DATA_REPO]) {
+      const r = await api(`/repos/${OWNER}/${repo}`);
+      if (r.status === 401) throw new Error('El token no es válido o ya venció. Crea uno nuevo.');
+      if (!r.ok) throw new Error(`El token no tiene acceso al repo "${repo}". Edítalo en GitHub y agrégalo.`);
+      const info = await r.json();
+      if (info.permissions && !info.permissions.push)
+        throw new Error(`El token solo puede leer "${repo}". Cambia Contents a "Read and write".`);
+    }
+  }
+
+  // ---------- publicar ----------
+  async function publish({ name, file, core, count }, log) {
+    const ext = extOf(file.name);
+    const slug = slugify(name);
+    let romPath = `roms/${slug}.${ext}`;
+
+    log('Revisando si el juego ya está subido…');
+    const existing = await getFile(SITE_REPO, romPath);
+    if (existing && existing.size === file.size) {
+      log('El juego ya estaba subido. Lo reutilizo.');
+    } else {
+      if (existing) romPath = `roms/${slug}-${randomHex(2)}.${ext}`; // mismo nombre, otro archivo
+      log('Subiendo el juego… (puede tardar unos segundos)');
+      await putFile(SITE_REPO, romPath, await fileToB64(file), `Agregar juego ${name}`);
+      log('Juego subido ✔');
+    }
+
+    const urls = [];
+    for (let i = 1; i <= count; i++) {
+      log(`Creando llavero ${i} de ${count}…`);
+      const id = randomHex(12);
+      const data = JSON.stringify({ game: name, rom: romPath, core });
+      await putFile(DATA_REPO, `tags/${id}.json`, utf8ToB64(data), `Nuevo llavero: ${name}`);
+      urls.push(`${siteUrl()}?tag=${id}`);
+    }
+    log('Todo listo ✔');
+    return { urls, romPath };
+  }
+
+  async function loadTags() {
+    const items = (await listDir(DATA_REPO, 'tags')).filter((f) => f.name.endsWith('.json'));
+    const out = [];
+    for (let i = 0; i < items.length; i += 6) {
+      const chunk = items.slice(i, i + 6);
+      const res = await Promise.all(chunk.map(async (f) => {
+        try {
+          const d = await getFile(DATA_REPO, f.path);
+          const j = JSON.parse(b64ToUtf8(d.content));
+          return { id: f.name.replace(/\.json$/, ''), sha: d.sha, path: f.path, game: j.game || '(sin nombre)', rom: j.rom || '', core: j.core || 'gb' };
+        } catch (e) { return null; }
+      }));
+      out.push(...res.filter(Boolean));
+    }
+    return out;
+  }
+
+  async function addTagFor(game) {
+    const id = randomHex(12);
+    await putFile(DATA_REPO, `tags/${id}.json`, utf8ToB64(JSON.stringify({ game: game.game, rom: game.rom, core: game.core })), `Nuevo llavero: ${game.game}`);
+    return `${siteUrl()}?tag=${id}`;
+  }
+
+  // ---------- interfaz ----------
+  function showMsg(el, text, kind) {
+    el.innerHTML = '';
+    if (!text) return;
+    const d = document.createElement('div');
+    d.className = 'msg ' + (kind || 'bad');
+    d.textContent = text;
+    el.appendChild(d);
+  }
+  async function copy(text, btn) {
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) {
+      const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
+      try { document.execCommand('copy'); } catch (e2) {} t.remove();
+    }
+    if (btn) { const o = btn.textContent; btn.textContent = '¡Copiado!'; setTimeout(() => (btn.textContent = o), 1200); }
+  }
+  function urlRow(url) {
+    const row = document.createElement('div'); row.className = 'url';
+    const code = document.createElement('code'); code.textContent = url;
+    const b = document.createElement('button'); b.type = 'button'; b.textContent = 'Copiar';
+    b.addEventListener('click', () => copy(url, b));
+    row.append(code, b);
+    return row;
+  }
+
+  function showTab(which) {
+    $('paneAdd').hidden = which !== 'add';
+    $('paneList').hidden = which !== 'list';
+    $('tabAdd').classList.toggle('on', which === 'add');
+    $('tabList').classList.toggle('on', which === 'list');
+    if (which === 'list') renderList();
+  }
+
+  async function renderList() {
+    const box = $('games'); box.textContent = 'Cargando…'; showMsg($('listMsg'), '');
+    try {
+      const tags = await loadTags();
+      box.textContent = '';
+      if (!tags.length) { box.textContent = 'Todavía no hay llaveros. Crea el primero en "Agregar juego".'; return; }
+      const groups = new Map();
+      tags.forEach((t) => { const k = t.game + '|' + t.rom; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); });
+      for (const list of groups.values()) {
+        const g = list[0];
+        const div = document.createElement('div'); div.className = 'game';
+        const h = document.createElement('h3'); h.textContent = g.game;
+        const meta = document.createElement('div'); meta.className = 'meta';
+        meta.textContent = `${CORE_NAMES[g.core] || g.core} · ${g.rom} · ${list.length} llavero${list.length === 1 ? '' : 's'}`;
+        div.append(h, meta);
+        list.forEach((t) => {
+          const url = `${siteUrl()}?tag=${t.id}`;
+          const row = document.createElement('div'); row.className = 'tagrow';
+          const code = document.createElement('code'); code.textContent = t.id.slice(0, 8) + '…';
+          const bCopy = document.createElement('button'); bCopy.type = 'button'; bCopy.textContent = 'Copiar enlace';
+          bCopy.addEventListener('click', () => copy(url, bCopy));
+          const bOpen = document.createElement('button'); bOpen.type = 'button'; bOpen.textContent = 'Probar';
+          bOpen.addEventListener('click', () => window.open(url, '_blank'));
+          const bDel = document.createElement('button'); bDel.type = 'button'; bDel.textContent = 'Eliminar'; bDel.className = 'danger';
+          bDel.addEventListener('click', async () => {
+            if (!confirm('¿Eliminar este llavero? Su enlace dejará de funcionar. La partida guardada se conserva en GitHub.')) return;
+            bDel.disabled = true;
+            try { await deleteFile(DATA_REPO, t.path, t.sha, `Eliminar llavero ${t.id.slice(0, 6)}`); renderList(); }
+            catch (e) { showMsg($('listMsg'), e.message); bDel.disabled = false; }
+          });
+          row.append(code, bCopy, bOpen, bDel);
+          div.appendChild(row);
+        });
+        const add = document.createElement('button'); add.type = 'button'; add.textContent = '＋ Otro llavero de este juego'; add.style.marginTop = '10px';
+        add.addEventListener('click', async () => {
+          add.disabled = true; add.textContent = 'Creando…';
+          try { const url = await addTagFor(g); await renderList(); showMsg($('listMsg'), 'Nuevo enlace creado:\n' + url, 'ok'); copy(url); }
+          catch (e) { showMsg($('listMsg'), e.message); add.disabled = false; add.textContent = '＋ Otro llavero de este juego'; }
+        });
+        div.appendChild(add);
+        box.appendChild(div);
+      }
+    } catch (e) { box.textContent = ''; showMsg($('listMsg'), e.message); }
+  }
+
+  function enterApp() { $('connectCard').hidden = true; $('main').hidden = false; showTab('add'); }
+
+  function init() {
+    const saved = (() => { try { return localStorage.getItem('nfc_panel_token'); } catch (e) { return null; } })();
+    if (saved) { $('token').value = saved; $('remember').checked = true; }
+
+    $('connectBtn').addEventListener('click', async () => {
+      const btn = $('connectBtn'); btn.disabled = true; btn.textContent = 'Conectando…'; showMsg($('connectMsg'), '');
+      try {
+        await connect($('token').value);
+        try { if ($('remember').checked) localStorage.setItem('nfc_panel_token', token); else localStorage.removeItem('nfc_panel_token'); } catch (e) {}
+        enterApp();
+      } catch (e) { showMsg($('connectMsg'), e.message); }
+      btn.disabled = false; btn.textContent = 'Conectar';
+    });
+    $('logout').addEventListener('click', () => {
+      token = ''; try { localStorage.removeItem('nfc_panel_token'); } catch (e) {}
+      $('token').value = ''; $('remember').checked = false; $('main').hidden = true; $('connectCard').hidden = false;
+    });
+    $('tabAdd').addEventListener('click', () => showTab('add'));
+    $('tabList').addEventListener('click', () => showTab('list'));
+    $('reload').addEventListener('click', renderList);
+
+    $('gfile').addEventListener('change', () => {
+      const f = $('gfile').files[0]; const hint = $('coreHint');
+      if (!f) { hint.textContent = 'Se detecta la consola automáticamente.'; return; }
+      const c = detectCore(f.name);
+      hint.textContent = c ? `Consola detectada: ${CORE_NAMES[c]}` : 'No reconozco este tipo de archivo. Usa .gb, .gbc, .gba, .nes, .sfc o .smc.';
+      if (!$('gname').value) $('gname').value = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s*[\(\[].*$/, '').trim();
+    });
+
+    $('publishBtn').addEventListener('click', async () => {
+      const name = $('gname').value.trim();
+      const file = $('gfile').files[0];
+      const count = Math.max(1, Math.min(20, parseInt($('gcount').value, 10) || 1));
+      showMsg($('addMsg'), ''); $('results').hidden = true;
+      if (!name) return showMsg($('addMsg'), 'Escribe el nombre del juego.');
+      if (!file) return showMsg($('addMsg'), 'Elige el archivo del juego.');
+      const core = detectCore(file.name);
+      if (!core) return showMsg($('addMsg'), 'No reconozco este tipo de archivo. Usa .gb, .gbc, .gba, .nes, .sfc o .smc.');
+      if (file.size > 25 * 1024 * 1024) return showMsg($('addMsg'), 'El archivo pesa más de 25 MB; GitHub no lo aceptará desde esta página.');
+
+      const logEl = $('log'); logEl.textContent = '';
+      const log = (t) => { logEl.textContent += t + '\n'; };
+      const btn = $('publishBtn'); btn.disabled = true;
+      try {
+        const res = await publish({ name, file, core, count }, log);
+        publishedUrls = res.urls;
+        const list = $('resultList'); list.textContent = '';
+        res.urls.forEach((u) => list.appendChild(urlRow(u)));
+        $('results').hidden = false;
+        $('results').scrollIntoView({ behavior: 'smooth' });
+      } catch (e) {
+        showMsg($('addMsg'), 'No se pudo completar: ' + e.message);
+      }
+      btn.disabled = false;
+    });
+    $('copyAll').addEventListener('click', () => copy(publishedUrls.join('\n'), $('copyAll')));
+  }
+
+  window.NFCPanel = { slugify, detectCore, randomHex, connect, publish, loadTags, addTagFor, deleteFile };
+  init();
+})();
+</script>
+</body>
+</html>
