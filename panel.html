@@ -85,7 +85,14 @@
         <label for="gname">Nombre del juego</label>
         <input type="text" id="gname" placeholder="Ej. Pokemon Blue" maxlength="60">
 
-        <label for="gfile">Archivo del juego</label>
+        <label for="gexisting">Elegir un juego que ya está en tu repo privado (nfc-data/roms)</label>
+        <div class="row" style="flex-wrap:nowrap">
+          <select id="gexisting" style="flex:1"><option value="">— Ninguno: voy a subir uno nuevo —</option></select>
+          <button type="button" id="reloadRoms">Actualizar</button>
+        </div>
+        <div class="hint" id="romsHint"></div>
+
+        <label for="gfile">…o sube un archivo nuevo</label>
         <input type="file" id="gfile" accept=".gb,.gbc,.gba,.nes,.sfc,.smc">
         <div class="hint" id="coreHint">Se detecta la consola automáticamente.</div>
 
@@ -93,7 +100,7 @@
         <input type="number" id="gcount" min="1" max="20" value="1">
         <div class="hint">Cada llavero tiene su propia partida guardada.</div>
 
-        <div class="row" style="margin-top:18px"><button class="primary" id="publishBtn" type="button">Publicar juego y crear llaveros</button></div>
+        <div class="row" style="margin-top:18px"><button class="primary" id="publishBtn" type="button">Crear llaveros</button></div>
         <div id="log"></div>
         <div id="addMsg"></div>
       </div>
@@ -233,20 +240,25 @@
   }
 
   // ---------- publicar ----------
-  async function publish({ name, file, core, count }, log) {
-    const ext = extOf(file.name);
-    const slug = slugify(name);
-    let romPath = `roms/${slug}.${ext}`;
-
-    log('Revisando si el juego ya está subido…');
-    const existing = await getFile(DATA_REPO, romPath);
-    if (existing && existing.size === file.size) {
-      log('El juego ya estaba subido. Lo reutilizo.');
+  async function publish({ name, file, existingRom, core, count }, log) {
+    let romPath;
+    if (existingRom) {
+      romPath = `roms/${existingRom}`;
+      log('Usando el juego que ya estaba subido: ' + existingRom);
     } else {
-      if (existing) romPath = `roms/${slug}-${randomHex(2)}.${ext}`; // mismo nombre, otro archivo
-      log('Subiendo el juego… (puede tardar unos segundos)');
-      await putFile(DATA_REPO, romPath, await fileToB64(file), `Agregar juego ${name}`);
-      log('Juego subido ✔');
+      const ext = extOf(file.name);
+      const slug = slugify(name);
+      romPath = `roms/${slug}.${ext}`;
+      log('Revisando si el juego ya está subido…');
+      const existing = await getFile(DATA_REPO, romPath);
+      if (existing && existing.size === file.size) {
+        log('El juego ya estaba subido. Lo reutilizo.');
+      } else {
+        if (existing) romPath = `roms/${slug}-${randomHex(2)}.${ext}`; // mismo nombre, otro archivo
+        log('Subiendo el juego… (puede tardar unos segundos)');
+        await putFile(DATA_REPO, romPath, await fileToB64(file), `Agregar juego ${name}`);
+        log('Juego subido ✔');
+      }
     }
 
     const urls = [];
@@ -260,6 +272,11 @@
     log('Todo listo ✔');
     return { urls, romPath };
   }
+
+  async function loadRoms() {
+    return (await listDir(DATA_REPO, 'roms')).filter((f) => f.type === 'file' && detectCore(f.name));
+  }
+  const nameFromFile = (fn) => fn.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s*[\(\[].*$/, '').trim();
 
   async function loadTags() {
     const items = (await listDir(DATA_REPO, 'tags')).filter((f) => f.name.endsWith('.json'));
@@ -310,6 +327,26 @@
     return row;
   }
 
+  async function refreshRoms() {
+    const sel = $('gexisting'), hint = $('romsHint');
+    hint.textContent = 'Buscando juegos…';
+    try {
+      const roms = await loadRoms();
+      const keep = sel.value;
+      sel.length = 1;
+      roms.forEach((f) => {
+        const o = document.createElement('option');
+        o.value = f.name;
+        o.textContent = `${f.name} (${(f.size / 1048576).toFixed(1)} MB)`;
+        sel.appendChild(o);
+      });
+      if (keep) sel.value = keep;
+      hint.textContent = roms.length
+        ? `${roms.length} juego${roms.length === 1 ? '' : 's'} en nfc-data/roms.`
+        : 'No hay juegos en nfc-data/roms todavía (o tienen un formato no compatible).';
+    } catch (e) { hint.textContent = e.message; }
+  }
+
   function showTab(which) {
     $('paneAdd').hidden = which !== 'add';
     $('paneList').hidden = which !== 'list';
@@ -322,6 +359,8 @@
     const box = $('games'); box.textContent = 'Cargando…'; showMsg($('listMsg'), '');
     try {
       const tags = await loadTags();
+      let romPaths = null;
+      try { romPaths = new Set((await listDir(DATA_REPO, 'roms')).map((f) => f.path)); } catch (e) {}
       box.textContent = '';
       if (!tags.length) { box.textContent = 'Todavía no hay llaveros. Crea el primero en "Agregar juego".'; return; }
       const groups = new Map();
@@ -333,6 +372,12 @@
         const meta = document.createElement('div'); meta.className = 'meta';
         meta.textContent = `${CORE_NAMES[g.core] || g.core} · ${g.rom} · ${list.length} llavero${list.length === 1 ? '' : 's'}`;
         div.append(h, meta);
+        if (romPaths && !romPaths.has(g.rom)) {
+          const warn = document.createElement('div');
+          warn.className = 'meta'; warn.style.color = 'var(--bad)';
+          warn.textContent = '⚠ No encuentro el archivo ' + g.rom + ' en nfc-data. Estos llaveros no cargarán hasta que lo subas con ese nombre exacto.';
+          div.appendChild(warn);
+        }
         list.forEach((t) => {
           const url = `${siteUrl()}?tag=${t.id}`;
           const row = document.createElement('div'); row.className = 'tagrow';
@@ -363,7 +408,7 @@
     } catch (e) { box.textContent = ''; showMsg($('listMsg'), e.message); }
   }
 
-  function enterApp() { $('connectCard').hidden = true; $('main').hidden = false; showTab('add'); }
+  function enterApp() { $('connectCard').hidden = true; $('main').hidden = false; showTab('add'); refreshRoms(); }
 
   function init() {
     const saved = (() => { try { return localStorage.getItem('nfc_panel_token'); } catch (e) { return null; } })();
@@ -386,35 +431,46 @@
     $('tabList').addEventListener('click', () => showTab('list'));
     $('reload').addEventListener('click', renderList);
 
+    $('reloadRoms').addEventListener('click', refreshRoms);
+    $('gexisting').addEventListener('change', () => {
+      const v = $('gexisting').value; const hint = $('coreHint');
+      if (!v) { hint.textContent = 'Se detecta la consola automáticamente.'; return; }
+      $('gfile').value = '';
+      hint.textContent = `Consola detectada: ${CORE_NAMES[detectCore(v)]}`;
+      if (!$('gname').value) $('gname').value = nameFromFile(v);
+    });
     $('gfile').addEventListener('change', () => {
       const f = $('gfile').files[0]; const hint = $('coreHint');
       if (!f) { hint.textContent = 'Se detecta la consola automáticamente.'; return; }
+      $('gexisting').value = '';
       const c = detectCore(f.name);
       hint.textContent = c ? `Consola detectada: ${CORE_NAMES[c]}` : 'No reconozco este tipo de archivo. Usa .gb, .gbc, .gba, .nes, .sfc o .smc.';
-      if (!$('gname').value) $('gname').value = f.name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s*[\(\[].*$/, '').trim();
+      if (!$('gname').value) $('gname').value = nameFromFile(f.name);
     });
 
     $('publishBtn').addEventListener('click', async () => {
       const name = $('gname').value.trim();
       const file = $('gfile').files[0];
+      const existingRom = $('gexisting').value;
       const count = Math.max(1, Math.min(20, parseInt($('gcount').value, 10) || 1));
       showMsg($('addMsg'), ''); $('results').hidden = true;
       if (!name) return showMsg($('addMsg'), 'Escribe el nombre del juego.');
-      if (!file) return showMsg($('addMsg'), 'Elige el archivo del juego.');
-      const core = detectCore(file.name);
+      if (!existingRom && !file) return showMsg($('addMsg'), 'Elige un juego de la lista o sube un archivo.');
+      const core = detectCore(existingRom || file.name);
       if (!core) return showMsg($('addMsg'), 'No reconozco este tipo de archivo. Usa .gb, .gbc, .gba, .nes, .sfc o .smc.');
-      if (file.size > 25 * 1024 * 1024) return showMsg($('addMsg'), 'El archivo pesa más de 25 MB; GitHub no lo aceptará desde esta página.');
+      if (!existingRom && file.size > 25 * 1024 * 1024) return showMsg($('addMsg'), 'El archivo pesa más de 25 MB; GitHub no lo aceptará desde esta página.');
 
       const logEl = $('log'); logEl.textContent = '';
       const log = (t) => { logEl.textContent += t + '\n'; };
       const btn = $('publishBtn'); btn.disabled = true;
       try {
-        const res = await publish({ name, file, core, count }, log);
+        const res = await publish({ name, file, existingRom, core, count }, log);
         publishedUrls = res.urls;
         const list = $('resultList'); list.textContent = '';
         res.urls.forEach((u) => list.appendChild(urlRow(u)));
         $('results').hidden = false;
         $('results').scrollIntoView({ behavior: 'smooth' });
+        if (!existingRom) refreshRoms();
       } catch (e) {
         showMsg($('addMsg'), 'No se pudo completar: ' + e.message);
       }
@@ -423,7 +479,7 @@
     $('copyAll').addEventListener('click', () => copy(publishedUrls.join('\n'), $('copyAll')));
   }
 
-  window.NFCPanel = { slugify, detectCore, randomHex, connect, publish, loadTags, addTagFor, deleteFile };
+  window.NFCPanel = { slugify, detectCore, randomHex, connect, publish, loadTags, loadRoms, addTagFor, deleteFile };
   init();
 })();
 </script>
