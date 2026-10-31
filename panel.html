@@ -63,11 +63,11 @@
       <ol>
         <li>En GitHub: tu foto → <b>Settings</b> → <b>Developer settings</b> → <b>Personal access tokens</b> → <b>Fine-grained tokens</b> → <b>Generate new token</b>.</li>
         <li>Nombre: <b>nfc-panel</b>.</li>
-        <li>En <b>Repository access</b> elige <b>Only select repositories</b> y marca <b>Emultators</b> y <b>nfc-data</b>.</li>
+        <li>En <b>Repository access</b> elige <b>Only select repositories</b> y marca solo <b>nfc-data</b>.</li>
         <li>En <b>Permissions → Repository permissions → Contents</b> elige <b>Read and write</b>.</li>
         <li>Pulsa <b>Generate token</b>, cópialo y pégalo arriba.</li>
       </ol>
-      Este token es distinto al del Worker y solo se guarda en tu dispositivo.
+      Este token solo se guarda en tu dispositivo. Los juegos se suben a tu repo privado, no a la página pública.
     </details>
   </div>
 
@@ -122,8 +122,7 @@
 (() => {
   // ===== AJUSTES (solo cambia esto si renombras tus repos) =====
   const OWNER = 'Bmowarmachine';
-  const SITE_REPO = 'Emultators';   // repo público con la página y las ROMs
-  const DATA_REPO = 'nfc-data';     // repo privado con tags/ y saves/
+  const DATA_REPO = 'nfc-data';     // repo PRIVADO con roms/, tags/ y saves/
   const BRANCH = 'main';
   // =============================================================
 
@@ -183,7 +182,7 @@
   async function explain(r) {
     if (r.status === 401) return 'El token no es válido o ya venció. Crea uno nuevo.';
     if (r.status === 403) return 'GitHub rechazó la acción (permisos del token o demasiadas peticiones seguidas).';
-    if (r.status === 404) return 'No encontré el repositorio. Revisa que el token incluya Emultators y nfc-data.';
+    if (r.status === 404) return 'No encontré el repositorio. Revisa que el token incluya nfc-data.';
     let t = ''; try { t = (await r.json()).message || ''; } catch (e) {}
     return 'GitHub respondió ' + r.status + (t ? ': ' + t : '');
   }
@@ -223,7 +222,7 @@
   async function connect(t) {
     token = t.trim();
     if (!token) throw new Error('Pega tu token primero.');
-    for (const repo of [SITE_REPO, DATA_REPO]) {
+    for (const repo of [DATA_REPO]) {
       const r = await api(`/repos/${OWNER}/${repo}`);
       if (r.status === 401) throw new Error('El token no es válido o ya venció. Crea uno nuevo.');
       if (!r.ok) throw new Error(`El token no tiene acceso al repo "${repo}". Edítalo en GitHub y agrégalo.`);
@@ -240,13 +239,13 @@
     let romPath = `roms/${slug}.${ext}`;
 
     log('Revisando si el juego ya está subido…');
-    const existing = await getFile(SITE_REPO, romPath);
+    const existing = await getFile(DATA_REPO, romPath);
     if (existing && existing.size === file.size) {
       log('El juego ya estaba subido. Lo reutilizo.');
     } else {
       if (existing) romPath = `roms/${slug}-${randomHex(2)}.${ext}`; // mismo nombre, otro archivo
       log('Subiendo el juego… (puede tardar unos segundos)');
-      await putFile(SITE_REPO, romPath, await fileToB64(file), `Agregar juego ${name}`);
+      await putFile(DATA_REPO, romPath, await fileToB64(file), `Agregar juego ${name}`);
       log('Juego subido ✔');
     }
 

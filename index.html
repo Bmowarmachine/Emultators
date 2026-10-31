@@ -116,7 +116,9 @@
   function startEmulator(info, stateUrl) {
     window.EJS_player = '#game';
     window.EJS_core = info.core || 'gb';
-    window.EJS_gameUrl = info.rom;
+    // El juego ya no está en la página pública: lo entrega el Worker solo con un llavero válido.
+    const romName = String(info.rom).split('/').pop();
+    window.EJS_gameUrl = `${API}/rom/${tag}/${encodeURIComponent(romName)}`;
     window.EJS_gameName = info.game;
     window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
     window.EJS_startOnLoaded = true;
