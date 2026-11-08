@@ -45,6 +45,8 @@
   <h1 id="bootTitle">Cargando…</h1>
   <div class="bar"><i></i></div>
   <p id="bootMsg">Buscando tu partida</p>
+  <p id="bootDiag" style="font-size:12px;opacity:.55;max-width:88vw;word-break:break-word;white-space:pre-wrap;margin:0"></p>
+  <button id="showEmu" type="button" hidden style="padding:9px 14px;border-radius:10px;border:1px solid #555;background:#222;color:#fff;font:inherit">Mostrar el emulador</button>
 </div>
 
 <div id="hud" hidden>
@@ -74,6 +76,22 @@
   let started = false;
 
   const setStatus = (t) => { $('status').textContent = t; };
+
+  // ---- diagnóstico visible (útil en iPhone, donde no hay consola) ----
+  let step = 'iniciando';
+  const errs = [];
+  const diag = () => {
+    $('bootDiag').textContent = 'Paso: ' + step + (errs.length ? '\n' + errs.slice(-2).join('\n') : '');
+  };
+  const setStep = (s) => { step = s; diag(); };
+  window.addEventListener('error', (e) => { errs.push(String(e.message || e.error || 'error')); diag(); });
+  window.addEventListener('unhandledrejection', (e) => {
+    errs.push(String((e.reason && e.reason.message) || e.reason || 'error')); diag();
+  });
+  // Si tarda, se ofrece ver la pantalla del propio emulador (a veces ahí espera un toque para empezar).
+  setTimeout(() => { if (!started) $('showEmu').hidden = false; }, 12000);
+  $('showEmu').addEventListener('click', () => $('boot').classList.add('hide'));
+  diag();
   const fatal = (msg) => {
     $('bootTitle').textContent = 'Ups';
     $('bootMsg').textContent = msg;
@@ -117,6 +135,7 @@
     } else {
       $('bootMsg').textContent = 'Partida nueva';
     }
+    setStep('cargando emulador');
     startEmulator(info, stateUrl);
   }
 
@@ -135,6 +154,7 @@
 
     window.EJS_onGameStart = () => {
       started = true;
+      setStep('listo');
       $('boot').classList.add('hide');
       $('hud').hidden = false;
       placeHud(); setTimeout(placeHud, 400); setTimeout(placeHud, 1500);
@@ -145,6 +165,7 @@
 
     const s = document.createElement('script');
     s.src = window.EJS_pathtodata + 'loader.js';
+    s.onload = () => setStep('preparando el juego');
     s.onerror = () => fatal('No pude cargar el emulador. Revisa tu conexión.');
     document.body.appendChild(s);
   }
